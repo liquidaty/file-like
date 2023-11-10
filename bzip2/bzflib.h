@@ -29,7 +29,7 @@ extern "C" {
 
 typedef struct bzFileLike BZFILELIKE; // will struct bzfl_stream
 
-struct filelike_callbacks BZ2_filelike_callbacks_FILE();
+// struct filelike_callbacks BZ2_filelike_callbacks_FILE();
 
 BZ_EXTERN BZFILELIKE* BZ_API(BZ2_bzflReadOpen) (
       int*  bzerror,
@@ -94,17 +94,22 @@ BZ_EXTERN void BZ_API(BZ2_bzflWriteClose64) (
       unsigned int* nbytes_out_hi32
    );
 
+  /**
+   * if(callbacks-
+   */
 BZFILELIKE * BZ_API(BZ2_bzflopen)
-     (const void *src,
-      const char *mode,
-      struct filelike_callbacks *callbacks,
-      void *open_ctx // will be passed to callbacks->fopen
-      );
-
-BZ_EXTERN size_t BZ_API(BZ2_bzflread)
-       (
-        void* buf, size_t size, size_t n, BZFILELIKE* bzfl
+       (void *src,
+        const char *mode,
+        struct filelike_callbacks *callbacks,
+        void *open_ctx // will be passed to callbacks->fopen
         );
+
+BZ_EXTERN size_t BZ_API(BZ2_bzflread1)
+       (
+        void* restrict buf, size_t size, size_t n, BZFILELIKE* restrict bzfl
+        );
+
+#define BZ2_bzflread (size_t (*)(void* restrict buf, size_t size, size_t n, void * restrict bzfl)) BZ2_bzflread1
 
 BZ_EXTERN size_t BZ_API(BZ2_bzflwrite)
        (
@@ -118,9 +123,12 @@ BZ_EXTERN int BZ_API(BZ2_bzflflush) (
       BZFILELIKE* b
    );
 
-BZ_EXTERN void BZ_API(BZ2_bzflclose) (
+BZ_EXTERN int BZ_API(BZ2_bzflclose1) (
       BZFILELIKE* b
    );
+
+#define BZ2_bzflclose (int (*)(void *bzfl)) BZ2_bzflclose1
+
 
 BZ_EXTERN const char * BZ_API(BZ2_bzflerror) (
       BZFILELIKE *b,

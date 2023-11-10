@@ -26,7 +26,7 @@ void *filelike_fopen(const void *src, const char *mode, void *opts) {
   return fp;
 }
 
-struct filelike_callbacks filelike_callbacks_FILE() {
+struct filelike_callbacks filelike_callbacks_FILENAME() {
   struct filelike_callbacks c = { 0 };
   c.fopen = filelike_fopen;
   c.fread = (size_t(*)(void *, size_t, size_t, void *))fread;
@@ -35,5 +35,12 @@ struct filelike_callbacks filelike_callbacks_FILE() {
   c.fclose = filelike_fclose;
   c.feof = (int (*)(void *))feof;
   c.ferror = (int (*)(void *))ferror;
+  return c;
+}
+
+struct filelike_callbacks filelike_callbacks_FILEPTR() {
+  struct filelike_callbacks c = filelike_callbacks_FILENAME();
+  c.fopen = NULL;
+  c.fclose = NULL;
   return c;
 }

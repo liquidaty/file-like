@@ -114,7 +114,7 @@ BZFILELIKE* BZ_API(BZ2_bzflWriteOpen)
        (verbosity < 0 || verbosity > 4))
       { BZFL_SETERR(BZ_PARAM_ERROR); return NULL; };
 
-   if (cb->ferror && cb->ferror(stream))
+   if (cb->ferror(stream))
       { BZFL_SETERR(BZ_IO_ERROR); return NULL; };
 
    bzfl = calloc(1, sizeof(*bzfl));
@@ -368,20 +368,26 @@ int BZ_API(bzflib_feof)( void *stream) {
   return 0;
 }
 
-struct filelike_callbacks BZ2_filelike_callbacks_FILE() {
-  struct filelike_callbacks c = filelike_callbacks_FILE();
+/*
+struct filelike_callbacks BZ2_filelike_callbacks_FILENAME() {
+  struct filelike_callbacks c = filelike_callbacks_FILENAME();
   c.feof = bzflib_feof;
   return c;
 }
-
+*/
 
 /**
- * open file for read or write.
- * ex) bzopen("file","w9", filelike_fopen, filelike_fclose, bzflib_feof, ferror)
- * case path="" or NULL => use stdin or stdout.
+ * like BZ2_bzopen, except:
+ * - takes a callbacks and open_ctx arg to use custom callbacks instead
+ *   of file functions
+ * - if callbacks->fopen is provided, then callbacks->fopen(src, mode, open_ctx)
+ *   will be called to create the input stream
+ * - if callbacks->fclose is provided, then callbacks->fclose(stream) will be
+ *   called by BZ2_bzflclose (or in BZ2_bzflopen in the case of error after
+ *   a successful callbacks->fopen call)
  */
 BZFILELIKE * BZ_API(BZ2_bzflopen)
-     (const void *src,
+     (void *src,
       const char *mode,
       struct filelike_callbacks *callbacks,
       void *open_ctx // will be passed to callbacks->fopen
@@ -419,7 +425,10 @@ BZFILELIKE * BZ_API(BZ2_bzflopen)
    strcat(mode2, writing ? "wb" : "rb" );
    strcat (mode2, writing ? "e" : "e" );
 
-   stream = callbacks->fopen(src, mode2, open_ctx);
+   if(callbacks->fopen)
+     stream = callbacks->fopen(src, mode2, open_ctx);
+   else
+     stream = src;
 
    if (writing) {
       /* Guard against total chaos and anarchy -- JRS */
@@ -433,15 +442,15 @@ BZFILELIKE * BZ_API(BZ2_bzflopen)
                              callbacks);
    }
    if (bzfl == NULL) {
-     if(stream)
+     if(stream && callbacks->fopen && callbacks->fclose)
        callbacks->fclose(stream);
    }
    return bzfl;
 }
 
 /*---------------------------------------------------*/
-size_t BZ_API(BZ2_bzflread)
-     (void* buf, size_t size, size_t n, BZFILELIKE* bzfl) {
+size_t BZ_API(BZ2_bzflread1)
+     (void* restrict buf, size_t size, size_t n, BZFILELIKE* restrict bzfl) {
   int len = (int) size * n;
   if(size != 0 && len / size != n) { // overflow
     fprintf(stderr, "Overflow!\n");
@@ -475,16 +484,17 @@ size_t BZ_API(BZ2_bzflwrite) (void* buf, size_t size, size_t n, void *stream) {
 
 
 /*---------------------------------------------------*/
-int BZ_API(BZ2_bzflflush) (BZFILELIKE *b) {
+int BZ_API(BZ2_bzflflush) (BZFILELIKE *bzfl) {
+  (void)(bzfl);
   return 0;
 }
 
 /*---------------------------------------------------*/
-void BZ_API(BZ2_bzflclose) (BZFILELIKE* bzfl) {
-   int bzerr;
+int BZ_API(BZ2_bzflclose1) (BZFILELIKE* bzfl) {
    if(bzfl == NULL)
-     return;
+     return 1;
 
+   int bzerr = 0;
    void *stream = bzfl->handle;
    if(bzfl->writing) {
       BZ2_bzflWriteClose(&bzerr,bzfl,0,NULL,NULL);
@@ -494,8 +504,9 @@ void BZ_API(BZ2_bzflclose) (BZFILELIKE* bzfl) {
    } else {
       BZ2_bzflReadClose(&bzerr,bzfl);
    }
-   if(stream)
+   if(stream && bzfl->cb.fopen && bzfl->cb.fclose)
      bzfl->cb.fclose(stream);
+   return bzerr;
 }
 
 
@@ -561,13 +572,13 @@ int main(int argc, const char *argv[]) {
   } else {
     bzfl = BZ2_bzflopen(NULL, "r", &cb, NULL); // read from stdin
     if(bzfl) {
-      while(!err && (bytes = BZ2_bzflread(buff, 1, sizeof(buff), bzfl)))
+      while(!err && (bytes = BZ2_bzflread1(buff, 1, sizeof(buff), bzfl)))
         fwrite(buff, 1, bytes, stdout);
     }
   }
 
   if(bzfl)
-    BZ2_bzflclose(bzfl);
+    BZ2_bzflclose1(bzfl);
   return err;
 }
 
